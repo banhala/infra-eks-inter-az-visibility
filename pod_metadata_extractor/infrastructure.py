@@ -94,7 +94,7 @@ class PodMetaDataExtractor(Construct):
                 str(pathlib.Path(__file__).parent.joinpath("runtime").resolve())
             ),
             handler="get_pods.lambda_handler",
-            timeout=Duration.minutes(1),
+            timeout=Duration.minutes(5),
             environment={
                 "REGION": Stack.of(self).region,
                 "CLUSTER_NAME": eks_cluster.cluster_name,
@@ -104,6 +104,7 @@ class PodMetaDataExtractor(Construct):
             },
             layers=python_lambda_layers,
             tracing=lambda_.Tracing.ACTIVE,
+            memory_size=2048,  # 설정한 메모리 (MB 단위)
         )
         return lambda_function
 
@@ -181,5 +182,32 @@ class PodMetaDataExtractor(Construct):
                 actions=["eks:DescribeCluster"],
                 effect=iam.Effect.ALLOW,
                 resources=[eks_cluster.cluster_arn],
+            )
+        )
+
+        # Allow lambda to describe the EKS cluster
+        lambda_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["eks:DescribeCluster"],
+                effect=iam.Effect.ALLOW,
+                resources=["arn:aws:eks:ap-northeast-2:145481888492:cluster/ably-prod"],
+            )
+        )
+
+        # Allow lambda to describe the EKS cluster
+        lambda_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["eks:DescribeCluster"],
+                effect=iam.Effect.ALLOW,
+                resources=["arn:aws:eks:ap-northeast-2:145481888492:cluster/ably-prod-ops"],
+            )
+        )
+
+        # Allow lambda to describe the EKS cluster
+        lambda_function.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["eks:DescribeCluster"],
+                effect=iam.Effect.ALLOW,
+                resources=["arn:aws:eks:ap-northeast-2:145481888492:cluster/ably-prod-0k5qsh"],
             )
         )

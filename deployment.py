@@ -30,7 +30,7 @@ from orchestrator_step_function.infrastructure import OrchestratorStepFunction
 from pod_metadata_extractor.infrastructure import PodMetaDataExtractor
 from vpc_flow_logs.infrastructure import VPCFlowLogs
 
-EVENT_BRIDGE_SCHEDULED_RULE_FREQUENCY = Duration.minutes(60)
+EVENT_BRIDGE_SCHEDULED_RULE_FREQUENCY = Duration.minutes(1)
 
 
 class EksInterAzVisibility(Stack):

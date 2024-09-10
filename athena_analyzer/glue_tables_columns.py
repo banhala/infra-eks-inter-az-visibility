@@ -19,6 +19,7 @@ pod_table_columns = [
     glue_alpha.Column(name="name", type=glue_alpha.Schema.STRING),
     glue_alpha.Column(name="ip", type=glue_alpha.Schema.STRING),
     glue_alpha.Column(name="app", type=glue_alpha.Schema.STRING),
+    glue_alpha.Column(name="component", type=glue_alpha.Schema.STRING),
     glue_alpha.Column(name="creation_time", type=glue_alpha.Schema.STRING),
     glue_alpha.Column(name="node", type=glue_alpha.Schema.STRING),
     glue_alpha.Column(name="az", type=glue_alpha.Schema.STRING),
@@ -37,5 +38,6 @@ vpc_flow_logs_table_columns = [
 athena_results_table_columns = [
     glue_alpha.Column(name="timestamp", type=glue_alpha.Schema.TIMESTAMP),
     glue_alpha.Column(name="cross_az_traffic", type=glue_alpha.Schema.STRING),
+    glue_alpha.Column(name="component", type=glue_alpha.Schema.STRING),
     glue_alpha.Column(name="bytes_transfered", type=glue_alpha.Schema.BIG_INT),
 ]

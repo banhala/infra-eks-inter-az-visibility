@@ -52,17 +52,44 @@ logging.info(f"Creating kubeconfig file")
 try:
     create_kube_config_file(
         config_file_path=KUBE_CONFIG_FILE_PATH,
-        cluster_name=CLUSTER_NAME,
+        cluster_name="ably-prod",
         k8s_client_role_arn=K8S_CLIENT_ROLE_ARN,
     )
 except Exception as exception:
     logging.error(f"There was a problem creating kubeconfig file: {exception}")
     raise exception
 
-# Configure the python kubernetes client with the created kubeconfig
-config.load_kube_config(config_file=KUBE_CONFIG_FILE_PATH)
-v1 = client.CoreV1Api()
+logging.info(f"Creating kubeconfig file-ops")
+try:
+    create_kube_config_file(
+        config_file_path=KUBE_CONFIG_FILE_PATH,
+        cluster_name="ably-prod-ops",
+        k8s_client_role_arn=K8S_CLIENT_ROLE_ARN,
+    )
+except Exception as exception:
+    logging.error(f"There was a problem creating kubeconfig file: {exception}")
+    raise exception
 
+logging.info(f"Creating kubeconfig file-hash")
+try:
+    create_kube_config_file(
+        config_file_path=KUBE_CONFIG_FILE_PATH,
+        cluster_name="ably-prod-0k5qsh",
+        k8s_client_role_arn=K8S_CLIENT_ROLE_ARN,
+    )
+except Exception as exception:
+    logging.error(f"There was a problem creating kubeconfig file: {exception}")
+    raise exception
+
+
+def get_k8s_client(config_file_path: str, context: str) -> client.CoreV1Api:
+    config.load_kube_config(config_file=config_file_path, context=context)
+    return client.CoreV1Api()
+
+# Create clients for each cluster
+v1_default = get_k8s_client(KUBE_CONFIG_FILE_PATH, context="arn:aws:eks:ap-northeast-2:145481888492:cluster/ably-prod")
+v1_ops = get_k8s_client(KUBE_CONFIG_FILE_PATH, context="arn:aws:eks:ap-northeast-2:145481888492:cluster/ably-prod-ops")
+v1_hash = get_k8s_client(KUBE_CONFIG_FILE_PATH, context="arn:aws:eks:ap-northeast-2:145481888492:cluster/ably-prod-0k5qsh")
 
 def lambda_handler(event, context):
     """
@@ -73,10 +100,40 @@ def lambda_handler(event, context):
 
     try:
         logging.info(f"Getting EKS nodes metadata")
-        nodes_azs = get_nodes_availability_zones()
+        nodes_azs = get_nodes_availability_zones(v1_default)
 
         logging.info(f"Getting EKS pods metadata")
-        pods_info = get_pods_info(nodes_azs)
+        pods_info = get_pods_info(v1_default, nodes_azs)
+
+    except Exception as exception:
+        error_message = f"There was a problem with the requests to the EKS cluster, please verify role mapping in ConfigMap/aws-auth: {exception}"
+        logging.error(error_message)
+        return {
+            "statusCode": HTTP_INTERNAL_SERVER_ERROR,
+            "body": error_message,
+        }
+    
+    try:
+        logging.info(f"Getting EKS nodes metadata-ops")
+        nodes_azs = get_nodes_availability_zones(v1_ops)
+
+        logging.info(f"Getting EKS pods metadata-ops")
+        pods_info_ops = get_pods_info(v1_ops, nodes_azs)
+
+    except Exception as exception:
+        error_message = f"There was a problem with the requests to the EKS cluster, please verify role mapping in ConfigMap/aws-auth: {exception}"
+        logging.error(error_message)
+        return {
+            "statusCode": HTTP_INTERNAL_SERVER_ERROR,
+            "body": error_message,
+        }
+    
+    try:
+        logging.info(f"Getting EKS nodes metadata-hash")
+        nodes_azs = get_nodes_availability_zones(v1_hash)
+
+        logging.info(f"Getting EKS pods metadata-hash")
+        pods_info_hash = get_pods_info(v1_hash, nodes_azs)
 
     except Exception as exception:
         error_message = f"There was a problem with the requests to the EKS cluster, please verify role mapping in ConfigMap/aws-auth: {exception}"
@@ -88,7 +145,11 @@ def lambda_handler(event, context):
 
     try:
         logging.info(f"Ceating local CSV file from pods' metadata")
-        file_path = create_pods_metadata_csv_file(pods_info)
+        logging.info(pods_info)
+        logging.info(pods_info_ops)
+        logging.info(pods_info_hash)
+        
+        file_path = create_pods_metadata_csv_file(pods_info + pods_info_ops + pods_info_hash)
 
     except Exception as exception:
         error_message = f"There was a problem ceating local CSV file from pods' metadata: {exception}"
@@ -111,7 +172,7 @@ def lambda_handler(event, context):
     }
 
 
-def get_nodes_availability_zones() -> dict[str, str]:
+def get_nodes_availability_zones(v1: client.CoreV1Api,) -> dict[str, str]:
     """
     Requests EKS nodes metadata and returns the nodes' availability zones
     """
@@ -128,15 +189,22 @@ def get_nodes_availability_zones() -> dict[str, str]:
     return nodes_azs
 
 
-def get_pods_info(nodes_azs: dict[str, str]) -> dict[str, str]:
+def get_pods_info(v1: client.CoreV1Api, nodes_azs: dict[str, str]) -> dict[str, str]:
     """
     Requests pods metadata from EKS
     """
     pods_info = []
 
-    pods = v1.list_pod_for_all_namespaces(label_selector=APP_LABEL, watch=False)
+    # 첫 번째 레이블 선택자
+    pods1 = v1.list_pod_for_all_namespaces(label_selector=APP_LABEL, watch=False)
+    
+    # 두 번째 레이블 선택자
+    pods2 = v1.list_pod_for_all_namespaces(label_selector="app.kubernetes.io/name", watch=False)
 
-    for pod in pods.items:
+    # 두 목록을 결합하고 중복을 제거
+    pods = {pod.metadata.name: pod for pod in pods1.items + pods2.items}.values()
+
+    for pod in pods:
         conditions = pod.status.conditions
         
         if not conditions:
@@ -149,16 +217,18 @@ def get_pods_info(nodes_azs: dict[str, str]) -> dict[str, str]:
         
         pod_creation_time = ready_condition.last_transition_time.strftime(
             TIME_DATE_FORMAT
-        )                
+        )            
+        app_label = pod.metadata.labels.get(APP_LABEL) or pod.metadata.labels.get("app.kubernetes.io/name", "<none>")
+
         info = {
             "name": pod.metadata.name,
             "ip": pod.status.pod_ip,
-            "app": pod.metadata.labels.get(APP_LABEL, "<none>"),
+            "app": app_label,
             "creation_time": pod_creation_time,
             "node": pod.spec.node_name,
             "az": nodes_azs.get(pod.spec.node_name, "<none>"),
         }
-        pods_info.append(info)                
+        pods_info.append(info)   
 
     return pods_info
 
@@ -170,7 +240,13 @@ def create_pods_metadata_csv_file(pods_info: dict[str, str]) -> str:
     file_path = f"/tmp/{PODS_METADATA_FILENAME}"
 
     pod_header_row = ",".join(["name", "ip", "app", "creation_time", "node", "az"])
-    pod_data_rows = [",".join(info.values()) for info in pods_info]
+    
+    pod_data_rows = []
+    for info in pods_info:
+        if info["ip"] == None:
+            continue
+        row = ",".join(info.values())
+        pod_data_rows.append(row)
 
     with open(file_path, "w") as f:
         f.write(f"{pod_header_row}\n")
