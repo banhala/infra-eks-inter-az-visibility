@@ -103,7 +103,7 @@ def lambda_handler(event, context):
         nodes_azs = get_nodes_availability_zones(v1_default)
 
         logging.info(f"Getting EKS pods metadata")
-        pods_info = get_pods_info(v1_default, nodes_azs)
+        pods_info = get_pods_info(v1_default, "new" , nodes_azs)
 
     except Exception as exception:
         error_message = f"There was a problem with the requests to the EKS cluster, please verify role mapping in ConfigMap/aws-auth: {exception}"
@@ -118,7 +118,7 @@ def lambda_handler(event, context):
         nodes_azs = get_nodes_availability_zones(v1_ops)
 
         logging.info(f"Getting EKS pods metadata-ops")
-        pods_info_ops = get_pods_info(v1_ops, nodes_azs)
+        pods_info_ops = get_pods_info(v1_ops, "ops", nodes_azs)
 
     except Exception as exception:
         error_message = f"There was a problem with the requests to the EKS cluster, please verify role mapping in ConfigMap/aws-auth: {exception}"
@@ -133,7 +133,7 @@ def lambda_handler(event, context):
         nodes_azs = get_nodes_availability_zones(v1_hash)
 
         logging.info(f"Getting EKS pods metadata-hash")
-        pods_info_hash = get_pods_info(v1_hash, nodes_azs)
+        pods_info_hash = get_pods_info(v1_hash, "old", nodes_azs)
 
     except Exception as exception:
         error_message = f"There was a problem with the requests to the EKS cluster, please verify role mapping in ConfigMap/aws-auth: {exception}"
@@ -189,7 +189,7 @@ def get_nodes_availability_zones(v1: client.CoreV1Api,) -> dict[str, str]:
     return nodes_azs
 
 
-def get_pods_info(v1: client.CoreV1Api, nodes_azs: dict[str, str]) -> dict[str, str]:
+def get_pods_info(v1: client.CoreV1Api, cluster_name: str, nodes_azs: dict[str, str]) -> dict[str, str]:
     """
     Requests pods metadata from EKS
     """
@@ -219,11 +219,15 @@ def get_pods_info(v1: client.CoreV1Api, nodes_azs: dict[str, str]) -> dict[str, 
             TIME_DATE_FORMAT
         )            
         app_label = pod.metadata.labels.get(APP_LABEL) or pod.metadata.labels.get("app.kubernetes.io/name", "<none>")
+         
+        componet_label = pod.metadata.labels.get("component") or pod.metadata.labels.get("app.kubernetes.io/component", "<none>")
 
         info = {
             "name": pod.metadata.name,
             "ip": pod.status.pod_ip,
             "app": app_label,
+            "component": componet_label,
+            "cluster": cluster_name,
             "creation_time": pod_creation_time,
             "node": pod.spec.node_name,
             "az": nodes_azs.get(pod.spec.node_name, "<none>"),
@@ -239,7 +243,7 @@ def create_pods_metadata_csv_file(pods_info: dict[str, str]) -> str:
     """
     file_path = f"/tmp/{PODS_METADATA_FILENAME}"
 
-    pod_header_row = ",".join(["name", "ip", "app", "creation_time", "node", "az"])
+    pod_header_row = ",".join(["name", "ip", "app", "component", "cluster",  "creation_time", "node", "az"])
     
     pod_data_rows = []
     for info in pods_info:
