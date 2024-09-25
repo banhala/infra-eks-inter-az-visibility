@@ -201,8 +201,11 @@ def get_pods_info(v1: client.CoreV1Api, cluster_name: str, nodes_azs: dict[str, 
     # 두 번째 레이블 선택자
     pods2 = v1.list_pod_for_all_namespaces(label_selector="app.kubernetes.io/name", watch=False)
 
+    # 두 번째 레이블 선택자
+    pods3 = v1.list_pod_for_all_namespaces(label_selector="elasticsearch.k8s.elastic.co/statefulset-name", watch=False)
+
     # 두 목록을 결합하고 중복을 제거
-    pods = {pod.metadata.name: pod for pod in pods1.items + pods2.items}.values()
+    pods = {pod.metadata.name: pod for pod in pods1.items + pods2.items + pods3.items}.values()
 
     for pod in pods:
         conditions = pod.status.conditions
@@ -218,7 +221,7 @@ def get_pods_info(v1: client.CoreV1Api, cluster_name: str, nodes_azs: dict[str, 
         pod_creation_time = ready_condition.last_transition_time.strftime(
             TIME_DATE_FORMAT
         )            
-        app_label = pod.metadata.labels.get(APP_LABEL) or pod.metadata.labels.get("app.kubernetes.io/name", "<none>")
+        app_label = pod.metadata.labels.get(APP_LABEL) or pod.metadata.labels.get("app.kubernetes.io/name") or pod.metadata.labels.get("elasticsearch.k8s.elastic.co/statefulset-name", "<none>")
          
         componet_label = pod.metadata.labels.get("component") or pod.metadata.labels.get("app.kubernetes.io/component", "<none>")
 

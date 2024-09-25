@@ -19,7 +19,7 @@ ip_addresses_and_az_mapping AS (
     SELECT DISTINCT pkt_srcaddr as ipaddress, az_id
     FROM "{vpc_flow_logs_table_name}"
     WHERE flow_direction = 'egress'
-    and from_unixtime("{vpc_flow_logs_table_name}".start)>(CURRENT_TIMESTAMP - ({invokation_frequency} * interval '2' minute))
+    and from_unixtime("{vpc_flow_logs_table_name}".start)>(CURRENT_TIMESTAMP - ({invokation_frequency} * interval '5' minute))
 ),
 egress_flows_of_pods_with_status AS (
     SELECT
@@ -35,7 +35,7 @@ egress_flows_of_pods_with_status AS (
     FROM "{vpc_flow_logs_table_name}"
     INNER JOIN "{pods_table_name}" ON "{vpc_flow_logs_table_name}".pkt_srcaddr = "{pods_table_name}".ip
     WHERE flow_direction = 'egress'
-    and from_unixtime("{vpc_flow_logs_table_name}".start)>(CURRENT_TIMESTAMP - ({invokation_frequency} * interval '2' minute))
+    and from_unixtime("{vpc_flow_logs_table_name}".start)>(CURRENT_TIMESTAMP - ({invokation_frequency} * interval '5' minute))
 ),
 
 cross_az_traffic_by_pod as (
